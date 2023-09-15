@@ -1,5 +1,3 @@
-CFLAGS=-std=c11 -g -static
-
 ycc: ycc.c
 test: ycc
 		./test.sh

@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-// prototype
+// prototypeee
 
 typedef enum
 {
@@ -28,6 +28,10 @@ typedef enum
 } NodeKind;
 typedef struct Token Token;
 typedef struct Node Node;
+int eq_cnt = 0;
+int le_cnt = 0;
+int lt_cnt = 0;
+int ne_cnt = 0;
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs);
 Node *new_node_num(int val);
 Node *primary();
@@ -253,8 +257,16 @@ Token *tokenize()
             p++;
             continue;
         }
+        // printf("%s\n", p);
+        if (start_with(p, "<=") || start_with(p, ">=") || start_with(p, "!=") || start_with(p, "=="))
+        {
+            cur = new_token(TK_RESERVED, cur, p, 2);
+            p++;
+            p++;
+            continue;
+        }
 
-        if (strchr("+-*/()", *p))
+        if (strchr("+-*/()<>", *p))
         {
             cur = new_token(TK_RESERVED, cur, p++, 1);
             continue;
@@ -280,32 +292,74 @@ void gen(Node *node)
 {
     if (node->kind == ND_NUM)
     {
-        printf("  push %d\n", node->val);
+        printf("  mov x0, #%d\n", node->val);
+        printf("  str x0, [sp, #-16]!\n");
         return;
     }
     gen(node->lhs);
     gen(node->rhs);
 
-    printf("  pop rdi\n");
-    printf("  pop rax\n");
+    printf("  ldr x1, [sp], #16\n");
+    printf("  ldr x0, [sp], #16\n");
 
     switch (node->kind)
     {
+    case ND_NUM:
+        break;
     case ND_ADD:
-        printf("  add rax, rdi\n");
+        printf("  add x0,x0, x1\n");
         break;
     case ND_SUB:
-        printf("  sub rax, rdi\n");
+        printf("  sub x0, x0, x1\n");
         break;
     case ND_MUL:
-        printf("  imul rax, rdi\n");
+        printf("  mul x0, x0,x1\n");
         break;
     case ND_DIV:
-        printf("  cqo\n");
-        printf("  idiv rdi\n");
+        printf("  sdiv x0,x0,x1\n");
+        break;
+    case ND_LE:
+        le_cnt++;
+        printf("  cmp x0, x1\n");
+        printf("  ble LE%d\n", le_cnt);
+        printf("  mov x0,#0\n");
+        printf("  B LEEND%d\n", le_cnt);
+        printf("LE%d:\n", le_cnt);
+        printf("  mov x0,#1\n");
+        printf("LEEND%d:\n", le_cnt);
+        break;
+    case ND_EQ:
+        eq_cnt++;
+        printf("  cmp x0, x1\n");
+        printf("  beq EQ%d\n", eq_cnt);
+        printf("  mov x0,#0\n");
+        printf("  B EQEND%d\n", eq_cnt);
+        printf("EQ%d:\n", eq_cnt);
+        printf("  mov x0,#1\n");
+        printf("EQEND%d:\n", eq_cnt);
+        break;
+    case ND_LT:
+        lt_cnt++;
+        printf("  cmp x0, x1\n");
+        printf("  blt LT%d\n", lt_cnt);
+        printf("  mov x0,#0\n");
+        printf("  B LTEND%d\n", lt_cnt);
+        printf("LT%d:\n", lt_cnt);
+        printf("  mov x0,#1\n");
+        printf("LTEND%d:\n", lt_cnt);
+        break;
+    case ND_NE:
+        ne_cnt++;
+        printf("  cmp x0, x1\n");
+        printf("  bne NE%d\n", ne_cnt);
+        printf("  mov x0,#0\n");
+        printf("  B NEEND%d\n", ne_cnt);
+        printf("NE%d:\n", ne_cnt);
+        printf("  mov x0,#1\n");
+        printf("NEEND%d:\n", ne_cnt);
         break;
     }
-    printf("  push rax\n");
+    printf("  str x0, [sp, #-16]!\n");
 }
 
 int main(int argc, char **argv)
@@ -316,14 +370,15 @@ int main(int argc, char **argv)
         return 1;
     }
     user_input = argv[1];
-    token = tokenize(user_input);
+    token = tokenize();
     Node *node = expr();
-    printf(".intel_syntax noprefix\n");
-    printf(".globl main\n");
-    printf("main:\n");
+    printf("    .section __TEXT,__text\n");
+    printf("    .globl _main\n");
+    printf("    .p2align 2\n");
+    printf("_main:\n");
 
     gen(node);
-    printf("  pop rax\n");
+    printf("  ldr x0, [sp], #16\n");
     printf("  ret \n");
     return 0;
 }
